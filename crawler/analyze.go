@@ -79,6 +79,11 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) Pag
 	defer resp.Body.Close()
 
 	page.HTTPStatus = resp.StatusCode
-	page.Status = "ok"
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		page.Status = "ok"
+	} else {
+		page.Status = "error"
+		page.Error = fmt.Sprintf("http status %d", resp.StatusCode)
+	}
 	return page
 }
