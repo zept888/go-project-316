@@ -3,6 +3,7 @@ package crawler_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,12 +12,20 @@ import (
 	"code/crawler"
 )
 
-type pageReport struct {
+type brokenLink struct {
 	URL        string `json:"url"`
-	Depth      int    `json:"depth"`
-	HTTPStatus int    `json:"http_status"`
-	Status     string `json:"status"`
+	StatusCode int    `json:"status_code"`
 	Error      string `json:"error"`
+}
+
+type pageReport struct {
+	URL          string       `json:"url"`
+	Depth        int          `json:"depth"`
+	HTTPStatus   int          `json:"http_status"`
+	Status       string       `json:"status"`
+	Error        string       `json:"error"`
+	BrokenLinks  []brokenLink `json:"broken_links"`
+	DiscoveredAt string       `json:"discovered_at"`
 }
 
 func analyzeFirstPage(t *testing.T, opts crawler.Options) pageReport {
@@ -149,5 +158,99 @@ func TestAnalyzeTimeout(t *testing.T) {
 	}
 	if page.Error == "" {
 		t.Error("error is empty")
+	}
+}
+
+func TestAnalyzeBrokenLinks(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!DOCTYPE html><html><body>
+			<a href="/ok">working</a>
+			<a href="/broken">broken</a>
+			<a href="mailto:noreply@example.com">email</a>
+			<a href="#">anchor</a>
+			<a href="">empty</a>
+		</body></html>`)
+	})
+	mux.HandleFunc("/ok", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/broken", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	page := analyzeFirstPage(t, crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      1,
+		HTTPClient: server.Client(),
+	})
+
+	if page.Status != "ok" {
+		t.Fatalf("status = %q, want ok", page.Status)
+	}
+	if page.DiscoveredAt == "" {
+		t.Error("discovered_at is empty")
+	}
+	if len(page.BrokenLinks) != 1 {
+		t.Fatalf("broken_links count = %d, want 1", len(page.BrokenLinks))
+	}
+
+	wantBroken := server.URL + "/broken"
+	if page.BrokenLinks[0].URL != wantBroken {
+		t.Errorf("broken url = %q, want %q", page.BrokenLinks[0].URL, wantBroken)
+	}
+	if page.BrokenLinks[0].StatusCode != http.StatusNotFound {
+		t.Errorf("broken status_code = %d, want %d", page.BrokenLinks[0].StatusCode, http.StatusNotFound)
+	}
+	if page.BrokenLinks[0].Error != "" {
+		t.Errorf("broken error = %q, want empty", page.BrokenLinks[0].Error)
+	}
+}
+
+func TestAnalyzeBrokenLinksNetworkError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!DOCTYPE html><html><body>
+			<a href="/ok">working</a>
+			<a href="https://cdn.simple.test/app.js">broken external</a>
+		</body></html>`)
+	})
+	mux.HandleFunc("/ok", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	page := analyzeFirstPage(t, crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      1,
+		HTTPClient: server.Client(),
+	})
+
+	if len(page.BrokenLinks) != 1 {
+		t.Fatalf("broken_links count = %d, want 1", len(page.BrokenLinks))
+	}
+	if page.BrokenLinks[0].URL != "https://cdn.simple.test/app.js" {
+		t.Errorf("broken url = %q, want https://cdn.simple.test/app.js", page.BrokenLinks[0].URL)
+	}
+	if page.BrokenLinks[0].StatusCode != 0 {
+		t.Errorf("broken status_code = %d, want 0", page.BrokenLinks[0].StatusCode)
+	}
+	if page.BrokenLinks[0].Error == "" {
+		t.Error("broken error is empty")
 	}
 }

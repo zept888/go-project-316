@@ -4,16 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
 
-type PageReport struct {
+type BrokenLink struct {
 	URL        string `json:"url"`
-	Depth      int    `json:"depth"`
-	HTTPStatus int    `json:"http_status"`
-	Status     string `json:"status"`
-	Error      string `json:"error"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+type PageReport struct {
+	URL          string       `json:"url"`
+	Depth        int          `json:"depth"`
+	HTTPStatus   int          `json:"http_status"`
+	Status       string       `json:"status"`
+	Error        string       `json:"error"`
+	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
+	DiscoveredAt string       `json:"discovered_at,omitempty"`
 }
 
 type Report struct {
@@ -78,12 +87,26 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) Pag
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		page.Status = "error"
+		page.Error = err.Error()
+		return page
+	}
+
 	page.HTTPStatus = resp.StatusCode
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		page.Status = "ok"
+		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+
+		links, err := extractLinks(pageURL, body)
+		if err == nil {
+			page.BrokenLinks = checkBrokenLinks(ctx, opts, links)
+		}
 	} else {
 		page.Status = "error"
 		page.Error = fmt.Sprintf("http status %d", resp.StatusCode)
 	}
+
 	return page
 }
