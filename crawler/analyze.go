@@ -33,14 +33,58 @@ type Report struct {
 	Pages       []PageReport `json:"pages"`
 }
 
-func Analyze(ctx context.Context, opts Options) ([]byte, error) {
-	page := fetchPage(ctx, opts, opts.URL, 0)
+type crawlItem struct {
+	url   string
+	depth int
+}
 
+func Analyze(ctx context.Context, opts Options) ([]byte, error) {
+	pages := crawl(ctx, opts)
+	return marshalReport(opts, pages)
+}
+
+func crawl(ctx context.Context, opts Options) []PageReport {
+	visited := map[string]struct{}{opts.URL: {}}
+	queue := []crawlItem{{url: opts.URL, depth: 0}}
+	var pages []PageReport
+
+	for len(queue) > 0 {
+		if ctx.Err() != nil {
+			break
+		}
+
+		item := queue[0]
+		queue = queue[1:]
+
+		page, links := fetchPage(ctx, opts, item.url, item.depth)
+		pages = append(pages, page)
+
+		childDepth := item.depth + 1
+		if childDepth >= opts.Depth || page.Status != "ok" {
+			continue
+		}
+
+		for _, link := range links {
+			if !sameDomain(opts.URL, link) {
+				continue
+			}
+			if _, seen := visited[link]; seen {
+				continue
+			}
+			visited[link] = struct{}{}
+			queue = append(queue, crawlItem{url: link, depth: childDepth})
+		}
+	}
+
+	return pages
+}
+
+func marshalReport(opts Options, pages []PageReport) ([]byte, error) {
 	report := Report{
 		RootURL:     opts.URL,
 		Depth:       opts.Depth,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Pages:       []PageReport{page},
+		Pages:       pages,
 	}
 
 	var data []byte
@@ -57,23 +101,24 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	return data, nil
 }
 
-func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) PageReport {
+func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) (PageReport, []string) {
 	page := PageReport{
 		URL:   pageURL,
 		Depth: depth,
 	}
 
+	reqCtx := ctx
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		reqCtx, cancel = context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, pageURL, nil)
 	if err != nil {
 		page.Status = "error"
 		page.Error = err.Error()
-		return page
+		return page, nil
 	}
 
 	if opts.UserAgent != "" {
@@ -84,7 +129,7 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) Pag
 	if err != nil {
 		page.Status = "error"
 		page.Error = err.Error()
-		return page
+		return page, nil
 	}
 	defer resp.Body.Close()
 
@@ -92,24 +137,21 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) Pag
 	if err != nil {
 		page.Status = "error"
 		page.Error = err.Error()
-		return page
+		return page, nil
 	}
+
+	links, _ := extractLinks(pageURL, body)
 
 	page.HTTPStatus = resp.StatusCode
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		page.Status = "ok"
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
-
 		page.SEO = extractSEO(body)
-
-		links, err := extractLinks(pageURL, body)
-		if err == nil {
-			page.BrokenLinks = checkBrokenLinks(ctx, opts, links)
-		}
+		page.BrokenLinks = checkBrokenLinks(reqCtx, opts, links)
 	} else {
 		page.Status = "error"
 		page.Error = fmt.Sprintf("http status %d", resp.StatusCode)
 	}
 
-	return page
+	return page, links
 }

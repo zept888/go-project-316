@@ -37,19 +37,25 @@ type pageReport struct {
 	SEO          seoReport    `json:"seo"`
 }
 
-func analyzeFirstPage(t *testing.T, opts crawler.Options) pageReport {
+type crawlReport struct {
+	RootURL     string       `json:"root_url"`
+	GeneratedAt string       `json:"generated_at"`
+	Pages       []pageReport `json:"pages"`
+}
+
+func analyzeReport(t *testing.T, ctx context.Context, opts crawler.Options) crawlReport {
 	t.Helper()
 
-	data, err := crawler.Analyze(context.Background(), opts)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	data, err := crawler.Analyze(ctx, opts)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
 
-	var report struct {
-		RootURL     string       `json:"root_url"`
-		GeneratedAt string       `json:"generated_at"`
-		Pages       []pageReport `json:"pages"`
-	}
+	var report crawlReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -59,11 +65,58 @@ func analyzeFirstPage(t *testing.T, opts crawler.Options) pageReport {
 	if report.GeneratedAt == "" {
 		t.Error("generated_at is empty")
 	}
+
+	return report
+}
+
+func analyzeFirstPage(t *testing.T, opts crawler.Options) pageReport {
+	t.Helper()
+
+	report := analyzeReport(t, context.Background(), opts)
 	if len(report.Pages) != 1 {
 		t.Fatalf("pages count = %d, want 1", len(report.Pages))
 	}
 
 	return report.Pages[0]
+}
+
+func pageURLs(pages []pageReport) []string {
+	urls := make([]string, len(pages))
+	for i, page := range pages {
+		urls[i] = page.URL
+	}
+	return urls
+}
+
+func setupDepthTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/":
+			fmt.Fprintf(w, `<!DOCTYPE html><html><body>
+				<a href="/a">a</a>
+				<a href="/b">b</a>
+				<a href="/dup">dup</a>
+				<a href="/dup">dup again</a>
+				<a href="https://external.test/out">external</a>
+			</body></html>`)
+		case "/a":
+			fmt.Fprint(w, `<!DOCTYPE html><html><body><a href="/c">c</a></body></html>`)
+		case "/b":
+			fmt.Fprint(w, `<!DOCTYPE html><html><body><h1>b</h1></body></html>`)
+		case "/c":
+			fmt.Fprint(w, `<!DOCTYPE html><html><body><h1>c</h1></body></html>`)
+		case "/dup":
+			fmt.Fprint(w, `<!DOCTYPE html><html><body><h1>dup</h1></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	return httptest.NewServer(mux)
 }
 
 func TestAnalyzeHTTPSuccess(t *testing.T) {
@@ -324,5 +377,150 @@ func TestAnalyzeSEOMissing(t *testing.T) {
 	}
 	if page.SEO.HasH1 {
 		t.Error("has_h1 = true, want false")
+	}
+}
+
+func TestAnalyzeDepthOneOnlyRoot(t *testing.T) {
+	server := setupDepthTestServer(t)
+	defer server.Close()
+
+	report := analyzeReport(t, context.Background(), crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      1,
+		HTTPClient: server.Client(),
+	})
+
+	if len(report.Pages) != 1 {
+		t.Fatalf("pages count = %d, want 1", len(report.Pages))
+	}
+	if report.Pages[0].Depth != 0 {
+		t.Errorf("depth = %d, want 0", report.Pages[0].Depth)
+	}
+}
+
+func TestAnalyzeDepthTwoIncludesChildren(t *testing.T) {
+	server := setupDepthTestServer(t)
+	defer server.Close()
+
+	report := analyzeReport(t, context.Background(), crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      2,
+		HTTPClient: server.Client(),
+	})
+
+	if len(report.Pages) != 4 {
+		t.Fatalf("pages count = %d, want 4", len(report.Pages))
+	}
+
+	want := map[string]int{
+		server.URL + "/":     0,
+		server.URL + "/a":    1,
+		server.URL + "/b":    1,
+		server.URL + "/dup":  1,
+	}
+	if len(want) != len(report.Pages) {
+		t.Fatalf("unexpected pages: %v", pageURLs(report.Pages))
+	}
+	for _, page := range report.Pages {
+		depth, ok := want[page.URL]
+		if !ok {
+			t.Errorf("unexpected page url %q", page.URL)
+			continue
+		}
+		if page.Depth != depth {
+			t.Errorf("page %q depth = %d, want %d", page.URL, page.Depth, depth)
+		}
+	}
+}
+
+func TestAnalyzeExternalNotInPages(t *testing.T) {
+	server := setupDepthTestServer(t)
+	defer server.Close()
+
+	report := analyzeReport(t, context.Background(), crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      2,
+		HTTPClient: server.Client(),
+	})
+
+	for _, page := range report.Pages {
+		if page.URL == "https://external.test/out" {
+			t.Fatalf("external url must not be in pages: %v", pageURLs(report.Pages))
+		}
+	}
+
+	root := report.Pages[0]
+	foundExternal := false
+	for _, link := range root.BrokenLinks {
+		if link.URL == "https://external.test/out" {
+			foundExternal = true
+			break
+		}
+	}
+	if !foundExternal {
+		t.Fatal("external link must be checked as broken link on root page")
+	}
+}
+
+func TestAnalyzeDuplicateLinksVisitedOnce(t *testing.T) {
+	server := setupDepthTestServer(t)
+	defer server.Close()
+
+	report := analyzeReport(t, context.Background(), crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      2,
+		HTTPClient: server.Client(),
+	})
+
+	dupCount := 0
+	for _, page := range report.Pages {
+		if page.URL == server.URL+"/dup" {
+			dupCount++
+		}
+	}
+	if dupCount != 1 {
+		t.Fatalf("/dup page count = %d, want 1", dupCount)
+	}
+}
+
+func TestAnalyzeContextCancel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/":
+			time.Sleep(50 * time.Millisecond)
+			fmt.Fprintf(w, `<!DOCTYPE html><html><body><a href="/slow">slow</a></body></html>`)
+		case "/slow":
+			time.Sleep(200 * time.Millisecond)
+			fmt.Fprint(w, `<!DOCTYPE html><html><body><h1>slow</h1></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		cancel()
+		close(done)
+	}()
+
+	report := analyzeReport(t, ctx, crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      2,
+		HTTPClient: server.Client(),
+	})
+
+	<-done
+
+	if len(report.Pages) == 0 {
+		t.Fatal("expected partial report with at least one page")
+	}
+	if len(report.Pages) > 2 {
+		t.Fatalf("pages count = %d, want at most 2", len(report.Pages))
 	}
 }
