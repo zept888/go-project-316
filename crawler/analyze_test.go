@@ -524,3 +524,45 @@ func TestAnalyzeContextCancel(t *testing.T) {
 		t.Fatalf("pages count = %d, want at most 2", len(report.Pages))
 	}
 }
+
+func TestAnalyzeWithRateLimitSamePages(t *testing.T) {
+	server := setupDepthTestServer(t)
+	defer server.Close()
+
+	base := crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      2,
+		HTTPClient: server.Client(),
+	}
+
+	unlimited := analyzeReport(t, context.Background(), base)
+	delayed := analyzeReport(t, context.Background(), crawler.Options{
+		URL:         base.URL,
+		Depth:       base.Depth,
+		Delay:       time.Millisecond,
+		HTTPClient:  base.HTTPClient,
+	})
+	rpsLimited := analyzeReport(t, context.Background(), crawler.Options{
+		URL:         base.URL,
+		Depth:       base.Depth,
+		RPS:         1000,
+		Delay:       time.Second,
+		HTTPClient:  base.HTTPClient,
+	})
+
+	if len(unlimited.Pages) != 4 {
+		t.Fatalf("unlimited pages = %d, want 4", len(unlimited.Pages))
+	}
+	if len(delayed.Pages) != len(unlimited.Pages) {
+		t.Fatalf("delayed pages = %d, want %d", len(delayed.Pages), len(unlimited.Pages))
+	}
+	if len(rpsLimited.Pages) != len(unlimited.Pages) {
+		t.Fatalf("rps pages = %d, want %d", len(rpsLimited.Pages), len(unlimited.Pages))
+	}
+
+	for _, page := range delayed.Pages {
+		if page.Status != "ok" {
+			t.Errorf("delayed page %q status = %q, want ok", page.URL, page.Status)
+		}
+	}
+}

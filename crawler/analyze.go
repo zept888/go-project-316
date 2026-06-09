@@ -44,6 +44,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 }
 
 func crawl(ctx context.Context, opts Options) []PageReport {
+	rl := newRateLimiter(opts, nil, nil)
 	visited := map[string]struct{}{opts.URL: {}}
 	queue := []crawlItem{{url: opts.URL, depth: 0}}
 	var pages []PageReport
@@ -56,7 +57,7 @@ func crawl(ctx context.Context, opts Options) []PageReport {
 		item := queue[0]
 		queue = queue[1:]
 
-		page, links := fetchPage(ctx, opts, item.url, item.depth)
+		page, links := fetchPage(ctx, opts, rl, item.url, item.depth)
 		pages = append(pages, page)
 
 		childDepth := item.depth + 1
@@ -101,7 +102,7 @@ func marshalReport(opts Options, pages []PageReport) ([]byte, error) {
 	return data, nil
 }
 
-func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) (PageReport, []string) {
+func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, pageURL string, depth int) (PageReport, []string) {
 	page := PageReport{
 		URL:   pageURL,
 		Depth: depth,
@@ -125,7 +126,7 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) (Pa
 		req.Header.Set("User-Agent", opts.UserAgent)
 	}
 
-	resp, err := opts.HTTPClient.Do(req)
+	resp, err := doHTTP(reqCtx, opts, rl, req)
 	if err != nil {
 		page.Status = "error"
 		page.Error = err.Error()
@@ -147,7 +148,7 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) (Pa
 		page.Status = "ok"
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
 		page.SEO = extractSEO(body)
-		page.BrokenLinks = checkBrokenLinks(reqCtx, opts, links)
+		page.BrokenLinks = checkBrokenLinks(reqCtx, opts, rl, links)
 	} else {
 		page.Status = "error"
 		page.Error = fmt.Sprintf("http status %d", resp.StatusCode)

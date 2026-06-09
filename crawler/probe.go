@@ -6,11 +6,11 @@ import (
 	"net/http"
 )
 
-func checkBrokenLinks(ctx context.Context, opts Options, links []string) []BrokenLink {
+func checkBrokenLinks(ctx context.Context, opts Options, rl *rateLimiter, links []string) []BrokenLink {
 	var broken []BrokenLink
 
 	for _, linkURL := range links {
-		statusCode, err := probeURL(ctx, opts, linkURL)
+		statusCode, err := probeURL(ctx, opts, rl, linkURL)
 		if err != nil {
 			broken = append(broken, BrokenLink{
 				URL:   linkURL,
@@ -29,18 +29,18 @@ func checkBrokenLinks(ctx context.Context, opts Options, links []string) []Broke
 	return broken
 }
 
-func probeURL(ctx context.Context, opts Options, target string) (int, error) {
-	statusCode, err := doProbe(ctx, opts, target, http.MethodHead)
+func probeURL(ctx context.Context, opts Options, rl *rateLimiter, target string) (int, error) {
+	statusCode, err := doProbe(ctx, opts, rl, target, http.MethodHead)
 	if err != nil {
 		return 0, err
 	}
 	if statusCode == http.StatusMethodNotAllowed || statusCode == http.StatusNotImplemented {
-		return doProbe(ctx, opts, target, http.MethodGet)
+		return doProbe(ctx, opts, rl, target, http.MethodGet)
 	}
 	return statusCode, nil
 }
 
-func doProbe(ctx context.Context, opts Options, target, method string) (int, error) {
+func doProbe(ctx context.Context, opts Options, rl *rateLimiter, target, method string) (int, error) {
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -55,7 +55,7 @@ func doProbe(ctx context.Context, opts Options, target, method string) (int, err
 		req.Header.Set("User-Agent", opts.UserAgent)
 	}
 
-	resp, err := opts.HTTPClient.Do(req)
+	resp, err := doHTTP(ctx, opts, rl, req)
 	if err != nil {
 		return 0, err
 	}

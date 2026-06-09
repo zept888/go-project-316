@@ -10,6 +10,7 @@ type Options struct {
 	Depth       int
 	Retries     int
 	Delay       time.Duration
+	RPS         float64
 	Timeout     time.Duration
 	UserAgent   string
 	Concurrency int
