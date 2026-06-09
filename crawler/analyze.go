@@ -23,6 +23,7 @@ type PageReport struct {
 	Error        string       `json:"error"`
 	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
 	DiscoveredAt string       `json:"discovered_at,omitempty"`
+	SEO          SEOReport    `json:"seo"`
 }
 
 type Report struct {
@@ -98,6 +99,8 @@ func fetchPage(ctx context.Context, opts Options, pageURL string, depth int) Pag
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		page.Status = "ok"
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+
+		page.SEO = extractSEO(body)
 
 		links, err := extractLinks(pageURL, body)
 		if err == nil {

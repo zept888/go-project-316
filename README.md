@@ -1,7 +1,5 @@
 # hexlet-go-crawler
 
-### CI
-
 [![Go Tests](https://github.com/zept888/go-project-316/actions/workflows/go-test.yml/badge.svg)](https://github.com/zept888/go-project-316/actions/workflows/go-test.yml)
 [![Hexlet Check](https://github.com/zept888/go-project-316/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/zept888/go-project-316/actions/workflows/hexlet-check.yml)
 

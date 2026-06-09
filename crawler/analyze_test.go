@@ -18,6 +18,14 @@ type brokenLink struct {
 	Error      string `json:"error"`
 }
 
+type seoReport struct {
+	HasTitle       bool   `json:"has_title"`
+	Title          string `json:"title"`
+	HasDescription bool   `json:"has_description"`
+	Description    string `json:"description"`
+	HasH1          bool   `json:"has_h1"`
+}
+
 type pageReport struct {
 	URL          string       `json:"url"`
 	Depth        int          `json:"depth"`
@@ -26,6 +34,7 @@ type pageReport struct {
 	Error        string       `json:"error"`
 	BrokenLinks  []brokenLink `json:"broken_links"`
 	DiscoveredAt string       `json:"discovered_at"`
+	SEO          seoReport    `json:"seo"`
 }
 
 func analyzeFirstPage(t *testing.T, opts crawler.Options) pageReport {
@@ -252,5 +261,68 @@ func TestAnalyzeBrokenLinksNetworkError(t *testing.T) {
 	}
 	if page.BrokenLinks[0].Error == "" {
 		t.Error("broken error is empty")
+	}
+}
+
+func TestAnalyzeSEOAllPresent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!DOCTYPE html><html><head>
+			<title>Tom &amp; Jerry</title>
+			<meta name="description" content="A &amp; B">
+		</head><body><h1>Hello &amp; World</h1></body></html>`)
+	}))
+	defer server.Close()
+
+	page := analyzeFirstPage(t, crawler.Options{
+		URL:        server.URL,
+		Depth:      1,
+		HTTPClient: server.Client(),
+	})
+
+	if !page.SEO.HasTitle {
+		t.Error("has_title = false, want true")
+	}
+	if page.SEO.Title != "Tom & Jerry" {
+		t.Errorf("title = %q, want %q", page.SEO.Title, "Tom & Jerry")
+	}
+	if !page.SEO.HasDescription {
+		t.Error("has_description = false, want true")
+	}
+	if page.SEO.Description != "A & B" {
+		t.Errorf("description = %q, want %q", page.SEO.Description, "A & B")
+	}
+	if !page.SEO.HasH1 {
+		t.Error("has_h1 = false, want true")
+	}
+}
+
+func TestAnalyzeSEOMissing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!DOCTYPE html><html><body><p>no seo</p></body></html>`)
+	}))
+	defer server.Close()
+
+	page := analyzeFirstPage(t, crawler.Options{
+		URL:        server.URL,
+		Depth:      1,
+		HTTPClient: server.Client(),
+	})
+
+	if page.SEO.HasTitle {
+		t.Error("has_title = true, want false")
+	}
+	if page.SEO.Title != "" {
+		t.Errorf("title = %q, want empty", page.SEO.Title)
+	}
+	if page.SEO.HasDescription {
+		t.Error("has_description = true, want false")
+	}
+	if page.SEO.Description != "" {
+		t.Errorf("description = %q, want empty", page.SEO.Description)
+	}
+	if page.SEO.HasH1 {
+		t.Error("has_h1 = true, want false")
 	}
 }
