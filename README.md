@@ -84,3 +84,25 @@ go run ./cmd/hexlet-go-crawler --delay 200ms https://example.com
 # Не более 5 запросов в секунду
 go run ./cmd/hexlet-go-crawler --rps 5 https://example.com
 ```
+
+## Повторные попытки (`--retries`)
+
+Параметр `--retries` задаёт максимальное число **повторных** попыток после неудачного запроса. Поле в `Options` — `Retries`. Всего выполняется не более `retries + 1` обращений к одному URL.
+
+Повтор выполняется только для временных ошибок:
+
+- сетевые сбои;
+- `429 Too Many Requests`;
+- `5xx` (серверные ошибки по [RFC 7231, раздел 6.6](https://datatracker.ietf.org/doc/html/rfc7231#section-6.6)).
+
+Коды `4xx` (кроме `429`) повторно не запрашиваются. Между попытками есть пауза 100ms, чтобы не создавать всплеск запросов. В отчёте (в том числе в `broken_links`) фиксируется результат **последней** попытки.
+
+Примеры:
+
+```bash
+# До 3 обращений к URL (1 основной + 2 повтора)
+go run ./cmd/hexlet-go-crawler --retries 2 https://example.com
+
+# Без повторов
+go run ./cmd/hexlet-go-crawler --retries 0 https://example.com
+```

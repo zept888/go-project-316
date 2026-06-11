@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -564,5 +565,38 @@ func TestAnalyzeWithRateLimitSamePages(t *testing.T) {
 		if page.Status != "ok" {
 			t.Errorf("delayed page %q status = %q, want ok", page.URL, page.Status)
 		}
+	}
+}
+
+func TestAnalyzeBrokenLinksRetryLastResult(t *testing.T) {
+	var calls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!DOCTYPE html><html><body><a href="/flaky">flaky</a></body></html>`)
+	})
+	mux.HandleFunc("/flaky", func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	page := analyzeFirstPage(t, crawler.Options{
+		URL:        server.URL + "/",
+		Depth:      1,
+		Retries:    1,
+		HTTPClient: server.Client(),
+	})
+
+	if len(page.BrokenLinks) != 0 {
+		t.Fatalf("broken_links = %v, want empty after successful retry", page.BrokenLinks)
+	}
+	if got := int(calls.Load()); got != 2 {
+		t.Fatalf("probe requests = %d, want 2", got)
 	}
 }

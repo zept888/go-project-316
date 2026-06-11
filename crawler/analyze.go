@@ -126,7 +126,7 @@ func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, pageURL strin
 		req.Header.Set("User-Agent", opts.UserAgent)
 	}
 
-	resp, err := doHTTP(reqCtx, opts, rl, req)
+	resp, err := doHTTPWithRetry(reqCtx, opts, rl, req)
 	if err != nil {
 		page.Status = "error"
 		page.Error = err.Error()

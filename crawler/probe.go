@@ -55,7 +55,7 @@ func doProbe(ctx context.Context, opts Options, rl *rateLimiter, target, method 
 		req.Header.Set("User-Agent", opts.UserAgent)
 	}
 
-	resp, err := doHTTP(ctx, opts, rl, req)
+	resp, err := doHTTPWithRetry(ctx, opts, rl, req)
 	if err != nil {
 		return 0, err
 	}
