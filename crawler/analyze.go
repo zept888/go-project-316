@@ -21,9 +21,10 @@ type PageReport struct {
 	HTTPStatus   int          `json:"http_status"`
 	Status       string       `json:"status"`
 	Error        string       `json:"error"`
-	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
-	DiscoveredAt string       `json:"discovered_at,omitempty"`
-	SEO          SEOReport    `json:"seo"`
+	BrokenLinks  []BrokenLink  `json:"broken_links,omitempty"`
+	DiscoveredAt string        `json:"discovered_at,omitempty"`
+	SEO          SEOReport     `json:"seo"`
+	Assets       []AssetReport `json:"assets,omitempty"`
 }
 
 type Report struct {
@@ -45,6 +46,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 
 func crawl(ctx context.Context, opts Options) []PageReport {
 	rl := newRateLimiter(opts, nil, nil)
+	ac := newAssetCache(opts, rl)
 	visited := map[string]struct{}{opts.URL: {}}
 	queue := []crawlItem{{url: opts.URL, depth: 0}}
 	var pages []PageReport
@@ -57,7 +59,7 @@ func crawl(ctx context.Context, opts Options) []PageReport {
 		item := queue[0]
 		queue = queue[1:]
 
-		page, links := fetchPage(ctx, opts, rl, item.url, item.depth)
+		page, links := fetchPage(ctx, opts, rl, ac, item.url, item.depth)
 		pages = append(pages, page)
 
 		childDepth := item.depth + 1
@@ -102,7 +104,7 @@ func marshalReport(opts Options, pages []PageReport) ([]byte, error) {
 	return data, nil
 }
 
-func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, pageURL string, depth int) (PageReport, []string) {
+func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, ac *assetCache, pageURL string, depth int) (PageReport, []string) {
 	page := PageReport{
 		URL:   pageURL,
 		Depth: depth,
@@ -149,6 +151,7 @@ func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, pageURL strin
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
 		page.SEO = extractSEO(body)
 		page.BrokenLinks = checkBrokenLinks(reqCtx, opts, rl, links)
+		page.Assets = collectPageAssets(reqCtx, ac, pageURL, body)
 	} else {
 		page.Status = "error"
 		page.Error = fmt.Sprintf("http status %d", resp.StatusCode)

@@ -115,6 +115,6 @@ func fetchPageForTest(t *testing.T, server *httptest.Server, retries int) PageRe
 	page, _ := fetchPage(context.Background(), Options{
 		Retries:    retries,
 		HTTPClient: server.Client(),
-	}, nil, server.URL, 0)
+	}, nil, newAssetCache(Options{HTTPClient: server.Client()}, nil), server.URL, 0)
 	return page
 }
