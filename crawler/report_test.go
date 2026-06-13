@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestReportMatchesGoldenShape(t *testing.T) {
+func TestAnalyzeJSONReport(t *testing.T) {
 	fixedTime := time.Date(2024, 6, 1, 12, 34, 56, 0, time.UTC)
 	originalReportTime := reportTime
 	reportTime = func() time.Time { return fixedTime }
@@ -109,7 +109,7 @@ func TestReportMatchesGoldenShape(t *testing.T) {
 	}
 }
 
-func TestIndentJSONSameContent(t *testing.T) {
+func TestAnalyzeIndentJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>t</title></head><body></body></html>`)
