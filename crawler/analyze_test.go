@@ -273,8 +273,8 @@ func TestAnalyzeBrokenLinks(t *testing.T) {
 	if page.BrokenLinks[0].StatusCode != http.StatusNotFound {
 		t.Errorf("broken status_code = %d, want %d", page.BrokenLinks[0].StatusCode, http.StatusNotFound)
 	}
-	if page.BrokenLinks[0].Error != "" {
-		t.Errorf("broken error = %q, want empty", page.BrokenLinks[0].Error)
+	if page.BrokenLinks[0].Error != http.StatusText(http.StatusNotFound) {
+		t.Errorf("broken error = %q, want %q", page.BrokenLinks[0].Error, http.StatusText(http.StatusNotFound))
 	}
 }
 

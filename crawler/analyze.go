@@ -11,20 +11,20 @@ import (
 
 type BrokenLink struct {
 	URL        string `json:"url"`
-	StatusCode int    `json:"status_code,omitempty"`
-	Error      string `json:"error,omitempty"`
+	StatusCode int    `json:"status_code"`
+	Error      string `json:"error"`
 }
 
 type PageReport struct {
-	URL          string       `json:"url"`
-	Depth        int          `json:"depth"`
-	HTTPStatus   int          `json:"http_status"`
-	Status       string       `json:"status"`
-	Error        string       `json:"error"`
-	BrokenLinks  []BrokenLink  `json:"broken_links,omitempty"`
-	DiscoveredAt string        `json:"discovered_at,omitempty"`
+	URL          string        `json:"url"`
+	Depth        int           `json:"depth"`
+	HTTPStatus   int           `json:"http_status"`
+	Status       string        `json:"status"`
+	Error        string        `json:"error"`
 	SEO          SEOReport     `json:"seo"`
-	Assets       []AssetReport `json:"assets,omitempty"`
+	BrokenLinks  []BrokenLink  `json:"broken_links"`
+	Assets       []AssetReport `json:"assets"`
+	DiscoveredAt string        `json:"discovered_at"`
 }
 
 type Report struct {
@@ -83,11 +83,16 @@ func crawl(ctx context.Context, opts Options) []PageReport {
 }
 
 func marshalReport(opts Options, pages []PageReport) ([]byte, error) {
+	normalized := make([]PageReport, len(pages))
+	for i, page := range pages {
+		normalized[i] = normalizePage(page)
+	}
+
 	report := Report{
 		RootURL:     opts.URL,
 		Depth:       opts.Depth,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Pages:       pages,
+		GeneratedAt: reportTime().Format(time.RFC3339),
+		Pages:       normalized,
 	}
 
 	var data []byte
@@ -104,10 +109,22 @@ func marshalReport(opts Options, pages []PageReport) ([]byte, error) {
 	return data, nil
 }
 
+func normalizePage(page PageReport) PageReport {
+	if page.BrokenLinks == nil {
+		page.BrokenLinks = []BrokenLink{}
+	}
+	if page.Assets == nil {
+		page.Assets = []AssetReport{}
+	}
+	return page
+}
+
 func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, ac *assetCache, pageURL string, depth int) (PageReport, []string) {
 	page := PageReport{
-		URL:   pageURL,
-		Depth: depth,
+		URL:         pageURL,
+		Depth:       depth,
+		BrokenLinks: []BrokenLink{},
+		Assets:      []AssetReport{},
 	}
 
 	reqCtx := ctx
@@ -148,7 +165,7 @@ func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, ac *assetCach
 	page.HTTPStatus = resp.StatusCode
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		page.Status = "ok"
-		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+		page.DiscoveredAt = reportTime().Format(time.RFC3339)
 		page.SEO = extractSEO(body)
 		page.BrokenLinks = checkBrokenLinks(reqCtx, opts, rl, links)
 		page.Assets = collectPageAssets(reqCtx, ac, pageURL, body)

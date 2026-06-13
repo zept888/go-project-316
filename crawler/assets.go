@@ -61,7 +61,7 @@ func (c *assetCache) get(ctx context.Context, assetURL, assetType string) AssetR
 func collectPageAssets(ctx context.Context, cache *assetCache, pageURL string, body []byte) []AssetReport {
 	refs, err := extractAssets(pageURL, body)
 	if err != nil {
-		return nil
+		return []AssetReport{}
 	}
 
 	assets := make([]AssetReport, 0, len(refs))
@@ -172,7 +172,7 @@ func fetchAsset(ctx context.Context, opts Options, rl *rateLimiter, assetURL, as
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		report.Error = fmt.Sprintf("http status %d", resp.StatusCode)
+		report.Error = http.StatusText(resp.StatusCode)
 		return report
 	}
 

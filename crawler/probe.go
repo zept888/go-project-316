@@ -7,7 +7,7 @@ import (
 )
 
 func checkBrokenLinks(ctx context.Context, opts Options, rl *rateLimiter, links []string) []BrokenLink {
-	var broken []BrokenLink
+	broken := []BrokenLink{}
 
 	for _, linkURL := range links {
 		statusCode, err := probeURL(ctx, opts, rl, linkURL)
@@ -22,6 +22,7 @@ func checkBrokenLinks(ctx context.Context, opts Options, rl *rateLimiter, links 
 			broken = append(broken, BrokenLink{
 				URL:        linkURL,
 				StatusCode: statusCode,
+				Error:      http.StatusText(statusCode),
 			})
 		}
 	}

@@ -178,7 +178,7 @@ func TestAssetErrorStatusIncluded(t *testing.T) {
 	if asset.SizeBytes != 0 {
 		t.Errorf("size_bytes = %d, want 0", asset.SizeBytes)
 	}
-	if asset.Error != "http status 404" {
-		t.Errorf("error = %q, want http status 404", asset.Error)
+	if asset.Error != http.StatusText(http.StatusNotFound) {
+		t.Errorf("error = %q, want %q", asset.Error, http.StatusText(http.StatusNotFound))
 	}
 }

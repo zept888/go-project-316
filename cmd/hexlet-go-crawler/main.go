@@ -50,6 +50,10 @@ func main() {
 				Usage: "number of concurrent workers",
 				Value: 4,
 			},
+			&cli.BoolFlag{
+				Name:  "indent-json",
+				Usage: "pretty-print JSON report",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			if c.NArg() < 1 {
@@ -65,6 +69,7 @@ func main() {
 				Timeout:     c.Duration("timeout"),
 				UserAgent:   c.String("user-agent"),
 				Concurrency: c.Int("workers"),
+				IndentJSON:  c.Bool("indent-json"),
 				HTTPClient:  &http.Client{},
 			}
 
@@ -73,6 +78,9 @@ func main() {
 				return err
 			}
 
+			if len(report) == 0 || report[len(report)-1] != '\n' {
+				report = append(report, '\n')
+			}
 			_, err = os.Stdout.Write(report)
 			return err
 		},
