@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -70,7 +71,10 @@ func crawl(ctx context.Context, opts Options) []PageReport {
 			continue
 		}
 
-		for _, link := range links {
+		childLinks := append([]string(nil), links...)
+		sort.Strings(childLinks)
+
+		for _, link := range childLinks {
 			if !sameDomain(opts.URL, link) {
 				continue
 			}
