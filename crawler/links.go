@@ -73,5 +73,9 @@ func normalizeLink(baseURL, href string) (string, bool) {
 	}
 
 	abs.Fragment = ""
-	return abs.String(), true
+	canon, err := canonicalURL(abs.String())
+	if err != nil {
+		return "", false
+	}
+	return canon, true
 }

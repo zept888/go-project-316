@@ -20,7 +20,7 @@ type PageReport struct {
 	Depth        int           `json:"depth"`
 	HTTPStatus   int           `json:"http_status"`
 	Status       string        `json:"status"`
-	Error        string        `json:"error"`
+	Error        string        `json:"error,omitempty"`
 	SEO          SEOReport     `json:"seo"`
 	BrokenLinks  []BrokenLink  `json:"broken_links"`
 	Assets       []AssetReport `json:"assets"`
@@ -40,6 +40,9 @@ type crawlItem struct {
 }
 
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
+	if canon, err := canonicalURL(opts.URL); err == nil {
+		opts.URL = canon
+	}
 	pages := crawl(ctx, opts)
 	return marshalReport(opts, pages)
 }
@@ -110,6 +113,9 @@ func marshalReport(opts Options, pages []PageReport) ([]byte, error) {
 }
 
 func normalizePage(page PageReport) PageReport {
+	if page.Status != "ok" {
+		return page
+	}
 	if page.BrokenLinks == nil {
 		page.BrokenLinks = []BrokenLink{}
 	}
@@ -120,11 +126,13 @@ func normalizePage(page PageReport) PageReport {
 }
 
 func fetchPage(ctx context.Context, opts Options, rl *rateLimiter, ac *assetCache, pageURL string, depth int) (PageReport, []string) {
+	if canon, err := canonicalURL(pageURL); err == nil {
+		pageURL = canon
+	}
+
 	page := PageReport{
-		URL:         pageURL,
-		Depth:       depth,
-		BrokenLinks: []BrokenLink{},
-		Assets:      []AssetReport{},
+		URL:   pageURL,
+		Depth: depth,
 	}
 
 	reqCtx := ctx

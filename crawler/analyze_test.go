@@ -251,7 +251,7 @@ func TestAnalyzeBrokenLinks(t *testing.T) {
 	defer server.Close()
 
 	page := analyzeFirstPage(t, crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      1,
 		HTTPClient: server.Client(),
 	})
@@ -299,7 +299,7 @@ func TestAnalyzeBrokenLinksNetworkError(t *testing.T) {
 	defer server.Close()
 
 	page := analyzeFirstPage(t, crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      1,
 		HTTPClient: server.Client(),
 	})
@@ -386,7 +386,7 @@ func TestAnalyzeDepthOneOnlyRoot(t *testing.T) {
 	defer server.Close()
 
 	report := analyzeReport(t, context.Background(), crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      1,
 		HTTPClient: server.Client(),
 	})
@@ -404,7 +404,7 @@ func TestAnalyzeDepthTwoIncludesChildren(t *testing.T) {
 	defer server.Close()
 
 	report := analyzeReport(t, context.Background(), crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      2,
 		HTTPClient: server.Client(),
 	})
@@ -414,7 +414,7 @@ func TestAnalyzeDepthTwoIncludesChildren(t *testing.T) {
 	}
 
 	want := map[string]int{
-		server.URL + "/":     0,
+		server.URL:     0,
 		server.URL + "/a":    1,
 		server.URL + "/b":    1,
 		server.URL + "/dup":  1,
@@ -439,7 +439,7 @@ func TestAnalyzeExternalNotInPages(t *testing.T) {
 	defer server.Close()
 
 	report := analyzeReport(t, context.Background(), crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      2,
 		HTTPClient: server.Client(),
 	})
@@ -468,7 +468,7 @@ func TestAnalyzeDuplicateLinksVisitedOnce(t *testing.T) {
 	defer server.Close()
 
 	report := analyzeReport(t, context.Background(), crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      2,
 		HTTPClient: server.Client(),
 	})
@@ -511,7 +511,7 @@ func TestAnalyzeContextCancel(t *testing.T) {
 	}()
 
 	report := analyzeReport(t, ctx, crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      2,
 		HTTPClient: server.Client(),
 	})
@@ -531,7 +531,7 @@ func TestAnalyzeWithRateLimitSamePages(t *testing.T) {
 	defer server.Close()
 
 	base := crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      2,
 		HTTPClient: server.Client(),
 	}
@@ -587,7 +587,7 @@ func TestAnalyzeBrokenLinksRetryLastResult(t *testing.T) {
 	defer server.Close()
 
 	page := analyzeFirstPage(t, crawler.Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      1,
 		Retries:    1,
 		HTTPClient: server.Client(),

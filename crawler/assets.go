@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +19,7 @@ type AssetReport struct {
 	Type       string `json:"type"`
 	StatusCode int    `json:"status_code"`
 	SizeBytes  int64  `json:"size_bytes"`
-	Error      string `json:"error"`
+	Error      string `json:"error,omitempty"`
 }
 
 type pageAssetRef struct {
@@ -64,11 +65,28 @@ func collectPageAssets(ctx context.Context, cache *assetCache, pageURL string, b
 		return []AssetReport{}
 	}
 
+	sort.SliceStable(refs, func(i, j int) bool {
+		return assetTypeRank(refs[i].typ) < assetTypeRank(refs[j].typ)
+	})
+
 	assets := make([]AssetReport, 0, len(refs))
 	for _, ref := range refs {
 		assets = append(assets, cache.get(ctx, ref.url, ref.typ))
 	}
 	return assets
+}
+
+func assetTypeRank(assetType string) int {
+	switch assetType {
+	case "image":
+		return 0
+	case "script":
+		return 1
+	case "style":
+		return 2
+	default:
+		return 3
+	}
 }
 
 func extractAssets(pageURL string, body []byte) ([]pageAssetRef, error) {

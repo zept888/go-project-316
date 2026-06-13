@@ -44,7 +44,7 @@ func TestAnalyzeJSONReport(t *testing.T) {
 	defer server.Close()
 
 	data, err := Analyze(context.Background(), Options{
-		URL:        server.URL + "/",
+		URL:        server.URL,
 		Depth:      1,
 		HTTPClient: server.Client(),
 	})
@@ -53,16 +53,15 @@ func TestAnalyzeJSONReport(t *testing.T) {
 	}
 
 	want := Report{
-		RootURL:     server.URL + "/",
+		RootURL:     server.URL,
 		Depth:       1,
 		GeneratedAt: fixedTime.Format(time.RFC3339),
 		Pages: []PageReport{
 			{
-				URL:        server.URL + "/",
+				URL:        server.URL,
 				Depth:      0,
 				HTTPStatus: http.StatusOK,
 				Status:     "ok",
-				Error:      "",
 				SEO: SEOReport{
 					HasTitle:       true,
 					Title:          "Example title",
@@ -83,7 +82,6 @@ func TestAnalyzeJSONReport(t *testing.T) {
 						Type:       "image",
 						StatusCode: http.StatusOK,
 						SizeBytes:  int64(len(logoBody)),
-						Error:      "",
 					},
 				},
 				DiscoveredAt: fixedTime.Format(time.RFC3339),
